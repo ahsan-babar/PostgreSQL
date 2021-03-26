@@ -1,0 +1,36 @@
+CREATE OR REPLACE FUNCTION entityinsertfunc() RETURNS TRIGGER AS $log_table$
+        BEGIN
+          INSERT INTO entity_log("key", "businessId", "entityType", operation, "newEntityData", "oldEntityData", "user", time) 
+            VALUES (new.key, new."businessId", new.type, 'CREATED', new.data, null, current_user, current_timestamp);
+          RETURN NEW;
+        END;
+    $log_table$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION entityupdatefunc() RETURNS TRIGGER AS $log_table$
+        BEGIN
+          INSERT INTO entity_log("key", "businessId", "entityType", operation, "newEntityData", "oldEntityData", "user", time) 
+            VALUES (new.key, new."businessId", new.type, 'UPDATED', new.data, old.data, current_user, current_timestamp);
+          RETURN NEW;
+        END;
+    $log_table$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION entitydeletefunc() RETURNS TRIGGER AS $log_table$
+        BEGIN
+          INSERT INTO entity_log("key", "businessId", "entityType", operation, "newEntityData", "oldEntityData", "user", time) 
+            VALUES (old.key, old."businessId", old.type, 'DELETED', null, old.data, current_user, current_timestamp);
+          RETURN NEW;
+        END;
+    $log_table$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS entity_insert ON entity;
+CREATE TRIGGER entity_insert AFTER INSERT ON entity
+FOR EACH ROW EXECUTE PROCEDURE entityinsertfunc();
+
+DROP TRIGGER IF EXISTS entity_update ON entity;
+CREATE TRIGGER entity_update AFTER UPDATE ON entity
+FOR EACH ROW WHEN (OLD.data::json::text != NEW.data::json::text)
+EXECUTE PROCEDURE entityupdatefunc();
+
+DROP TRIGGER IF EXISTS entity_delete ON entity;
+CREATE TRIGGER entity_delete AFTER DELETE ON entity
+FOR EACH ROW EXECUTE PROCEDURE entitydeletefunc();
