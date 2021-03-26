@@ -1,0 +1,53 @@
+CREATE OR REPLACE FUNCTION entity_change_notify() RETURNS trigger AS $$
+    DECLARE
+			key varchar;
+			"businessId" varchar;
+			type varchar; 
+			"eventTime" varchar;
+			data json;
+			response json;
+			"rabbitMQRoutingHeader" text;
+    BEGIN
+		IF TG_OP = 'INSERT' THEN
+			key = NEW.key;
+			"businessId" = NEW."businessId";
+			type = NEW.type;
+			"eventTime" = to_char(NEW."createdAt" at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')::text;
+			data = NEW.data;
+			"rabbitMQRoutingHeader" = "businessId"||'.'||type||'.'||lower(TG_OP)||'d|Topic ';
+			response=  json_build_object('key', key, 'businessId', "businessId",'type', type,'eventTime', "eventTime",'data', data);  
+			PERFORM pg_notify('pg_entity_events', "rabbitMQRoutingHeader"||json_build_object('response', response, 'operation', TG_OP)::text);		
+		
+		ELSEIF TG_OP = 'UPDATE' AND NEW.data::text != OLD.data::text THEN 
+			key = NEW.key;
+			"businessId" = NEW."businessId";
+			type = NEW.type;
+			"eventTime" = to_char(NEW."updatedAt" at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')::text;
+			data = NEW.data;
+			"rabbitMQRoutingHeader" = "businessId"||'.'||type||'.'||lower(TG_OP)||'d|Topic ';
+			response=  json_build_object('key', key, 'businessId', "businessId",'type', type,'eventTime', "eventTime",'data', data);  
+			PERFORM pg_notify('pg_entity_events', "rabbitMQRoutingHeader"||json_build_object('response', response, 'operation', TG_OP)::text);		
+		
+		ELSEIF TG_OP = 'DELETE' THEN 
+			key = OLD.key;
+			"businessId" = OLD."businessId";
+			type = OLD.type;
+			"eventTime" = to_char(now() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')::text;
+			data = OLD.data;
+			"rabbitMQRoutingHeader" = "businessId"||'.'||type||'.'||lower(TG_OP)||'d|Topic ';
+			response=  json_build_object('key', key, 'businessId', "businessId",'type', type,'eventTime', "eventTime",'data', data);  
+			PERFORM pg_notify('pg_entity_events', "rabbitMQRoutingHeader"||json_build_object('response', response, 'operation', TG_OP)::text);
+		END IF;
+	RETURN NEW;
+	END;
+	$$	
+	LANGUAGE plpgsql;
+    
+DROP TRIGGER IF EXISTS entity_update_notify ON entity;
+CREATE TRIGGER entity_update_notify AFTER UPDATE ON entity FOR EACH ROW EXECUTE PROCEDURE entity_change_notify();
+
+DROP TRIGGER IF EXISTS entity_insert_notify ON entity;
+CREATE TRIGGER entity_insert_notify AFTER INSERT ON entity FOR EACH ROW EXECUTE PROCEDURE entity_change_notify();
+
+DROP TRIGGER IF EXISTS entity_delete_notify ON entity;
+CREATE TRIGGER entity_delete_notify AFTER DELETE ON entity FOR EACH ROW EXECUTE PROCEDURE entity_change_notify();
